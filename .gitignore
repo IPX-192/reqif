@@ -1,2 +1,4 @@
 /test/debug
 test/Makefile.Debug
+test/Makefile
+test/Makefile.Release

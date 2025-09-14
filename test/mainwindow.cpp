@@ -26,7 +26,7 @@ void MainWindow::initUI() {
     // 左侧需求树
     m_treeWidget = new QTreeWidget(splitter);
     m_treeWidget->setMinimumWidth(300);
-    m_treeWidget->setHeaderLabel(u8"需求结构");
+    m_treeWidget->setHeaderLabels(QStringList() << u8"序号" << u8"需求名称");
     QFont treeFont = m_treeWidget->font();
     treeFont.setPointSize(10);
     m_treeWidget->setFont(treeFont);
@@ -66,23 +66,26 @@ void MainWindow::onLoadFile() {
 
     if (m_parser.load(filePath)) {
         m_parser.fillTree(m_treeWidget);
-        int count = m_parser.getValidReqCount();
-        QString message = QString(u8"加载完成，共找到 %1 条需求").arg(count);
+        int totalCount = m_parser.getAllReqCount();
+        int validCount = m_parser.getValidReqCount();
+
+        QString message = QString(u8"加载完成，共解析 %1 条需求，其中有效需求 %2 条")
+                         .arg(totalCount).arg(validCount);
         statusBar()->showMessage(message, 5000);
 
-        if (count == 0) {
+        if (validCount == 0) {
             QMessageBox::warning(this, u8"警告",
-                                 u8"文件加载成功，但没有解析到任何需求。\n"
-                                 u8"请检查属性映射或命名空间是否匹配。");
-        } else {
-            QMessageBox::information(this, u8"成功", message);
+                                 u8"文件加载成功，但没有找到有效需求。\n"
+                                 u8"可能原因：\n"
+                                 u8"1. 所有需求都是未命名需求\n"
+                                 u8"2. 属性映射不匹配\n"
+                                 u8"3. 命名空间配置问题");
         }
     } else {
         statusBar()->showMessage(u8"文件解析失败", 5000);
         QMessageBox::critical(this, u8"失败", u8"文件解析失败，请检查文件格式");
     }
 }
-
 
 void MainWindow::onReqItemClicked(QTreeWidgetItem *item, int column) {
     Q_UNUSED(column);
