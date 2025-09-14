@@ -19,15 +19,17 @@ public:
     ~MainWindow();
 
 private slots:
-    void onLoadFile();
-    void onReqItemClicked(QTreeWidgetItem *item, int column);
+    void onLoadFile();                  // 加载ReqIF文件
+    void onReqItemClicked(QTreeWidgetItem *item, int column); // 需求节点点击事件
+
+private:
+    void initUI();                      // 初始化界面
 
 private:
     Ui::MainWindow *ui;
-    QTreeWidget *m_treeWidget;       // 用于显示需求树
-    QTextBrowser *m_descBrowser;     // 用于显示需求详情
-    ReqifParser m_parser;            // ReqIF文件解析器
-
-    void initUI();                   // 初始化用户界面
+    QTreeWidget *m_treeWidget;          // 左侧需求树
+    QTextBrowser *m_descBrowser;        // 右侧描述框
+    ReqifParser m_parser;               // 需求解析器实例
+    QString m_lastLoadedPath;           // 上次加载的文件路径（避免重复加载）
 };
 #endif // MAINWINDOW_H
