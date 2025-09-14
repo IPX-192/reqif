@@ -250,10 +250,20 @@ bool ReqifParser::parseXml(const QString &xmlPath) {
     qDebug() << "父子关系数量:" << m_parentMap.size();
     qDebug() << "解析元素总数:" << elementCount;
 
+    // 统计有效需求数量
+    int validReqCount = 0;
+    for (const auto &req : m_reqMap) {
+        if (!req.name.isEmpty() && !req.name.contains(u8"未命名需求")) {
+            validReqCount++;
+        }
+    }
+    qDebug() << "有效需求数量（过滤后）:" << validReqCount;
+    qDebug() << "过滤掉的未命名需求数量:" << (m_reqMap.size() - validReqCount);
+
     // 输出关键需求信息（便于验证）
     int debugCount = 0;
     for (const auto &req : m_reqMap) {
-        if (!req.name.isEmpty() && debugCount < 10) { // 只输出前10个有名称的需求
+        if (!req.name.isEmpty() && !req.name.contains(u8"未命名需求") && debugCount < 10) {
             qDebug() << "需求[" << debugCount + 1 << "]:"
                      << "ID=" << req.id
                      << "序号=" << req.sortNum
@@ -264,8 +274,8 @@ bool ReqifParser::parseXml(const QString &xmlPath) {
     }
 
     // 检查解析结果有效性
-    if (m_reqMap.isEmpty()) {
-        QMessageBox::warning(nullptr, u8"警告", u8"解析完成但未获取到任何需求数据");
+    if (validReqCount == 0) {
+        QMessageBox::warning(nullptr, u8"警告", u8"解析完成但未获取到任何有效需求数据");
         return false;
     }
 
@@ -336,9 +346,11 @@ void ReqifParser::parseHierarchy(QXmlStreamReader &xml, const QString &parentId)
 // 从排序号推断层次结构（优化逻辑）
 void ReqifParser::inferHierarchyFromSortNumbers() {
     QList<ReqData*> sortedReqs;
-    // 筛选有排序号的需求
+    // 筛选有排序号且非未命名的需求
     for (auto &req : m_reqMap) {
-        if (req.sortNum > 0) {
+        if (req.sortNum > 0 &&
+            !req.name.isEmpty() &&
+            !req.name.contains(u8"未命名需求")) {
             sortedReqs.append(&req);
         }
     }
@@ -456,7 +468,7 @@ QString ReqifParser::cleanHtml(const QString &htmlText) {
     return result;
 }
 
-// 填充需求树（优化显示效果）
+// 填充需求树（过滤未命名需求）
 void ReqifParser::fillTree(QTreeWidget *treeWidget) {
     if (!treeWidget) return;
     treeWidget->clear();
@@ -465,16 +477,21 @@ void ReqifParser::fillTree(QTreeWidget *treeWidget) {
 
     QMap<QString, QTreeWidgetItem*> itemMap;
 
-    // 1. 添加顶层节点
+    // 1. 添加顶层节点（过滤未命名需求）
     for (const QString &id : m_topReqIds) {
         if (m_reqMap.contains(id)) {
             const ReqData &req = m_reqMap[id];
+            // 过滤未命名需求
+            if (req.name.isEmpty() || req.name.contains(u8"未命名需求")) {
+                continue;
+            }
+
             QTreeWidgetItem *item = new QTreeWidgetItem(treeWidget);
             item->setText(0, req.sortNum > 0 ? QString::number(req.sortNum) : "");
-            item->setText(1, req.name.isEmpty() ? u8"[未命名需求]" : req.name);
+            item->setText(1, req.name);
             item->setData(0, Qt::UserRole, id); // 存储需求ID用于后续查询
 
-            // 根据层级设置缩进或样式
+            // 根据层级设置样式
             if (req.level > 1) {
                 QFont font = item->font(1);
                 font.setBold(true);
@@ -485,18 +502,28 @@ void ReqifParser::fillTree(QTreeWidget *treeWidget) {
         }
     }
 
-    // 2. 添加子节点（按层级顺序）
-    QList<ReqData> sortedReqs = m_reqMap.values();
+    // 2. 添加子节点（按层级顺序，过滤未命名需求）
+    QList<ReqData> sortedReqs;
+    // 筛选非未命名的需求
+    for (const ReqData &req : m_reqMap) {
+        if (!req.name.isEmpty() && !req.name.contains(u8"未命名需求")) {
+            sortedReqs.append(req);
+        }
+    }
+
     std::sort(sortedReqs.begin(), sortedReqs.end(),
               [](const ReqData &a, const ReqData &b) {
                   return a.sortNum < b.sortNum;
               });
 
     for (const ReqData &req : sortedReqs) {
-        if (req.level > 1 && !req.parentId.isEmpty() && itemMap.contains(req.parentId)) {
+        if (req.level > 1 && !req.parentId.isEmpty() &&
+            itemMap.contains(req.parentId) &&
+            !req.name.isEmpty() && !req.name.contains(u8"未命名需求")) {
+
             QTreeWidgetItem *item = new QTreeWidgetItem(itemMap[req.parentId]);
             item->setText(0, req.sortNum > 0 ? QString::number(req.sortNum) : "");
-            item->setText(1, req.name.isEmpty() ? u8"[未命名需求]" : req.name);
+            item->setText(1, req.name);
             item->setData(0, Qt::UserRole, req.id);
 
             // 为不同层级设置不同样式
@@ -528,6 +555,17 @@ QString ReqifParser::getReqDescription(const QString &reqId) {
 // 获取需求总数
 int ReqifParser::getAllReqCount() const {
     return m_reqMap.size();
+}
+
+// 获取有效需求数量（过滤未命名需求后）
+int ReqifParser::getValidReqCount() const {
+    int count = 0;
+    for (const auto &req : m_reqMap) {
+        if (!req.name.isEmpty() && !req.name.contains(u8"未命名需求")) {
+            count++;
+        }
+    }
+    return count;
 }
 
 // 解析整数属性（优化控制逻辑）
@@ -597,7 +635,13 @@ void ReqifParser::parseXhtmlAttribute(QXmlStreamReader &xml, ReqData &currentReq
     // 处理属性映射
     if (!defRef.isEmpty()) {
         if (defRef.contains("_valm_Name", Qt::CaseInsensitive)) {
-            currentReq.name = cleanHtml(theValue);
+            QString cleanedName = cleanHtml(theValue);
+            // 检查是否为未命名需求
+            if (cleanedName.isEmpty() || cleanedName.contains(u8"未命名需求")) {
+                currentReq.name = ""; // 标记为空名称
+            } else {
+                currentReq.name = cleanedName;
+            }
             qDebug() << "解析名称:" << currentReq.name;
         }
         else if (defRef.contains("_valm_Description", Qt::CaseInsensitive)) {

@@ -32,6 +32,7 @@ public:
     void fillTree(QTreeWidget *treeWidget);              // 填充需求树
     QString getReqDescription(const QString &reqId);     // 获取需求描述
     int getAllReqCount() const;                          // 获取需求总数
+    int getValidReqCount() const;                          // 获取需求总数
 
 private:
     // 核心解析方法

@@ -66,7 +66,7 @@ void MainWindow::onLoadFile() {
 
     if (m_parser.load(filePath)) {
         m_parser.fillTree(m_treeWidget);
-        int count = m_parser.getAllReqCount();
+        int count = m_parser.getValidReqCount();
         QString message = QString(u8"加载完成，共找到 %1 条需求").arg(count);
         statusBar()->showMessage(message, 5000);
 
