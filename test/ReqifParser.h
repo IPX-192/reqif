@@ -27,6 +27,7 @@ public:
     explicit ReqifParser(QObject *parent = nullptr);
     bool load(const QString &filePath);                  // 加载并解析ReqIF文件
     void fillTree(QTreeWidget *treeWidget);              // 填充需求树到UI
+    void fillTreeWithFilter(QTreeWidget *treeWidget, const QString &filterText); // 按关键词过滤填充
     QString getReqDescription(const QString &reqId);     // 根据ID获取需求描述
     int getAllReqCount() const;                          // 获取总需求数
     int getValidReqCount() const;                        // 获取有效需求数（非空名称）
@@ -50,6 +51,9 @@ private:
     QString cleanHtml(const QString &htmlText);          // 清理HTML标签
     QString readXhtmlContent(QXmlStreamReader &xml);     // 读取嵌套XHTML内容
     bool isReqifElement(const QXmlStreamReader &xml, const QString &localName); // 判断ReqIF元素
+    // 添加这两个私有方法
+     void addRelatedNodes(const QString &reqId, QSet<QString> &matchedIds);
+     void addAllChildren(const QString &parentId, QSet<QString> &matchedIds);
 
 private:
     QMap<QString, ReqData> m_reqMap;       // 需求存储（ID -> 需求数据）

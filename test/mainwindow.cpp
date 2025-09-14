@@ -6,92 +6,94 @@
 #include <QSplitter>
 #include <QFont>
 #include <QStatusBar>
+#include <QToolBar>
+#include <QAction>
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
     , ui(new Ui::MainWindow) {
     ui->setupUi(this);
     setWindowTitle(u8"ReqIF需求查看器");
-    resize(1000, 600); // 初始窗口大小
-    initUI();          // 初始化界面组件
+    resize(1000, 600);
+    initUI();
 }
 
 MainWindow::~MainWindow() {
     delete ui;
 }
 
-// 初始化界面布局和组件
 void MainWindow::initUI() {
-    // 水平分割器：左侧树 + 右侧描述
     QSplitter *splitter = new QSplitter(Qt::Horizontal, this);
 
     // 左侧需求树
     m_treeWidget = new QTreeWidget(splitter);
-    m_treeWidget->setMinimumWidth(300);                  // 最小宽度
-    m_treeWidget->setHeaderLabels(QStringList() << u8"序号" << u8"需求名称"); // 表头
+    m_treeWidget->setMinimumWidth(300);
+    m_treeWidget->setHeaderLabels(QStringList() << u8"序号" << u8"需求名称");
     QFont treeFont = m_treeWidget->font();
-    treeFont.setPointSize(10);                           // 字体大小
+    treeFont.setPointSize(10);
     m_treeWidget->setFont(treeFont);
-    m_treeWidget->setAlternatingRowColors(true);          // 交替行颜色（提升可读性）
-    m_treeWidget->setIndentation(20);                     // 层级缩进（替代原错误的setIndentation）
+    m_treeWidget->setAlternatingRowColors(true);
 
     // 右侧描述框
     m_descBrowser = new QTextBrowser(splitter);
-    m_descBrowser->setMinimumWidth(600);                  // 最小宽度
+    m_descBrowser->setMinimumWidth(600);
     QFont descFont = m_descBrowser->font();
-    descFont.setPointSize(10);                            // 字体大小
+    descFont.setPointSize(10);
     m_descBrowser->setFont(descFont);
-    m_descBrowser->setStyleSheet("background-color: #f8f8f8; padding: 15px;"); // 样式
-    m_descBrowser->setPlaceholderText(u8"点击左侧需求节点查看描述"); // 提示文本
+    m_descBrowser->setStyleSheet("background-color: #f8f8f8; padding: 15px;");
+    m_descBrowser->setPlaceholderText(u8"点击左侧需求节点查看描述");
 
-    // 设置分割器比例（左侧30%，右侧70%）
     splitter->setSizes({300, 700});
     setCentralWidget(splitter);
 
-    // 菜单栏：文件 -> 加载
+    // 创建工具栏
+    QToolBar *toolBar = addToolBar(u8"功能");
+    toolBar->setMovable(false);
+
+    // 文件菜单
     QMenu *fileMenu = menuBar()->addMenu(u8"文件");
     QAction *loadAction = fileMenu->addAction(u8"加载.reqif文件");
-    loadAction->setShortcut(QKeySequence::Open); // 快捷键 Ctrl+O
+    loadAction->setShortcut(QKeySequence::Open);
     connect(loadAction, &QAction::triggered, this, &MainWindow::onLoadFile);
 
-    // 连接树节点点击事件：显示对应需求描述
+    // 过滤菜单
+    QMenu *filterMenu = menuBar()->addMenu(u8"过滤");
+    QAction *techReqAction = filterMenu->addAction(u8"显示技术要求");
+    connect(techReqAction, &QAction::triggered, this, &MainWindow::onShowTechnicalRequirements);
+
+    // 工具栏按钮
+    QAction *showAllAction = toolBar->addAction(u8"显示全部");
+    QAction *techFilterAction = toolBar->addAction(u8"技术要求");
+
+    connect(showAllAction, &QAction::triggered, [this]() {
+        m_parser.fillTree(m_treeWidget);
+        statusBar()->showMessage(u8"显示所有需求", 3000);
+    });
+
+    connect(techFilterAction, &QAction::triggered, this, &MainWindow::onShowTechnicalRequirements);
     connect(m_treeWidget, &QTreeWidget::itemClicked, this, &MainWindow::onReqItemClicked);
 
-    // 状态栏初始化
     statusBar()->showMessage(u8"就绪");
 }
 
-// 加载ReqIF文件：打开文件选择对话框并解析
 void MainWindow::onLoadFile() {
-    // 打开文件选择对话框
     QString filePath = QFileDialog::getOpenFileName(
         this, u8"选择ReqIF文件", "",
-        u8"ReqIF文件 (*.reqif);;所有文件 (*.*)" // 文件筛选
+        u8"ReqIF文件 (*.reqif);;所有文件 (*.*)"
     );
-    if (filePath.isEmpty()) return; // 用户取消选择
+    if (filePath.isEmpty()) return;
 
-    // 避免重复加载同一文件
-    if (filePath == m_lastLoadedPath) {
-        QMessageBox::information(this, u8"提示", u8"已加载该文件，无需重复加载");
-        return;
-    }
-    m_lastLoadedPath = filePath;
-
-    // 显示解析状态
     statusBar()->showMessage(u8"正在解析文件...");
 
-    // 调用解析器加载文件
     if (m_parser.load(filePath)) {
-        // 解析成功：填充树并更新状态
         m_parser.fillTree(m_treeWidget);
         int totalCount = m_parser.getAllReqCount();
         int validCount = m_parser.getValidReqCount();
 
         QString message = QString(u8"加载完成，共解析 %1 条需求，其中有效需求 %2 条")
                          .arg(totalCount).arg(validCount);
-        statusBar()->showMessage(message, 5000); // 5秒后自动消失
+        statusBar()->showMessage(message, 5000);
 
-        // 无有效需求时提示
         if (validCount == 0) {
             QMessageBox::warning(this, u8"警告",
                                  u8"文件加载成功，但没有找到有效需求。\n"
@@ -101,27 +103,32 @@ void MainWindow::onLoadFile() {
                                  u8"3. 命名空间配置问题");
         }
     } else {
-        // 解析失败：提示错误
         statusBar()->showMessage(u8"文件解析失败", 5000);
         QMessageBox::critical(this, u8"失败", u8"文件解析失败，请检查文件格式");
     }
 }
 
-// 树节点点击事件：显示对应需求的描述
-void MainWindow::onReqItemClicked(QTreeWidgetItem *item, int column) {
-    Q_UNUSED(column); // 忽略列参数
-    if (!item) return; // 空节点防护
-
-    // 从节点数据中获取需求ID（存储在第0列的UserRole中）
-    QString reqId = item->data(0, Qt::UserRole).toString();
-
-    // 无效ID处理
-    if (reqId.isEmpty()) {
-        m_descBrowser->setPlainText(u8"[该节点无有效需求信息]");
+void MainWindow::onShowTechnicalRequirements() {
+    if (m_parser.getAllReqCount() == 0) {
+        QMessageBox::information(this, u8"提示", u8"请先加载ReqIF文件");
         return;
     }
 
-    // 获取并显示需求描述
+    // 过滤显示技术要求相关的内容
+    m_parser.fillTreeWithFilter(m_treeWidget, u8"技术");
+
+    int visibleCount = m_treeWidget->topLevelItemCount();
+    if (visibleCount > 0) {
+        statusBar()->showMessage(QString(u8"显示 %1 条技术要求相关需求").arg(visibleCount), 3000);
+    } else {
+        statusBar()->showMessage(u8"未找到技术要求相关需求", 3000);
+    }
+}
+
+void MainWindow::onReqItemClicked(QTreeWidgetItem *item, int column) {
+    Q_UNUSED(column);
+    if (!item) return;
+    QString reqId = item->data(0, Qt::UserRole).toString();
     QString description = m_parser.getReqDescription(reqId);
     m_descBrowser->setPlainText(description);
 }

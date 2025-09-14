@@ -438,3 +438,107 @@ bool ReqifParser::isReqifElement(const QXmlStreamReader &xml, const QString &loc
     return xml.namespaceUri() == m_reqifNamespace &&
            xml.name().toString().compare(localName, Qt::CaseInsensitive) == 0;
 }
+
+void ReqifParser::fillTreeWithFilter(QTreeWidget *treeWidget, const QString &filterText) {
+    if (!treeWidget || filterText.isEmpty()) {
+        fillTree(treeWidget); // 如果过滤文本为空，显示全部
+        return;
+    }
+
+    // 初始化树控件
+    treeWidget->clear();
+    treeWidget->setHeaderLabels(QStringList() << u8"序号" << u8"需求名称");
+    treeWidget->setSortingEnabled(false);
+    treeWidget->setIndentation(20);
+
+    QMap<QString, QTreeWidgetItem*> itemMap;
+    QSet<QString> matchedIds; // 存储匹配的需求ID
+
+    // 1. 查找所有匹配过滤条件的需求
+    for (const auto &req : m_reqMap) {
+        if (!isValidReq(req)) continue;
+
+        // 检查需求名称是否包含过滤文本
+        if (req.name.contains(filterText, Qt::CaseInsensitive)) {
+            // 递归添加所有相关节点：父级、自身、所有子级
+            addRelatedNodes(req.id, matchedIds);
+        }
+    }
+
+    // 2. 创建匹配需求的节点
+    for (const auto &req : m_reqMap) {
+        if (!matchedIds.contains(req.id)) continue;
+
+        QTreeWidgetItem *item = new QTreeWidgetItem();
+        item->setText(0, req.sortNum > 0 ? QString::number(req.sortNum) : "");
+        item->setText(1, req.name);
+        item->setData(0, Qt::UserRole, req.id);
+        itemMap[req.id] = item;
+    }
+
+    // 3. 构建层次结构（只包含匹配的需求）
+    for (const auto &req : m_reqMap) {
+        if (!matchedIds.contains(req.id)) continue;
+
+        QTreeWidgetItem *item = itemMap[req.id];
+        if (req.parentId.isEmpty() || !itemMap.contains(req.parentId)) {
+            treeWidget->addTopLevelItem(item);
+        } else {
+            itemMap[req.parentId]->addChild(item);
+        }
+    }
+
+    // 4. 优化显示
+    treeWidget->expandAll();
+    treeWidget->resizeColumnToContents(0);
+    treeWidget->resizeColumnToContents(1);
+
+    // 显示过滤结果统计
+    int totalCount = matchedIds.size();
+    if (totalCount == 0) {
+        QTreeWidgetItem *noResultItem = new QTreeWidgetItem(treeWidget);
+        noResultItem->setText(1, QString(u8"未找到包含\"%1\"的需求").arg(filterText));
+        noResultItem->setFlags(noResultItem->flags() & ~Qt::ItemIsSelectable);
+    }
+}
+
+// 递归添加相关节点（父级、自身、所有子级）
+void ReqifParser::addRelatedNodes(const QString &reqId, QSet<QString> &matchedIds) {
+    if (matchedIds.contains(reqId) || !m_reqMap.contains(reqId)) {
+        return;
+    }
+
+    // 添加当前节点
+    matchedIds.insert(reqId);
+
+    // 递归添加所有父级节点
+    QString parentId = m_reqMap[reqId].parentId;
+    while (!parentId.isEmpty() && m_reqMap.contains(parentId)) {
+        if (!matchedIds.contains(parentId)) {
+            matchedIds.insert(parentId);
+            parentId = m_reqMap[parentId].parentId;
+        } else {
+            break; // 避免循环
+        }
+    }
+
+    // 递归添加所有子级节点
+    addAllChildren(reqId, matchedIds); // 这里调用 addAllChildren
+}
+
+// 递归添加所有子节点
+// 递归添加所有子节点
+void ReqifParser::addAllChildren(const QString &parentId, QSet<QString> &matchedIds) {
+    // 查找所有直接子节点
+    for (auto it = m_reqMap.constBegin(); it != m_reqMap.constEnd(); ++it) {
+        const QString &id = it.key();
+        const ReqData &req = it.value();
+
+        if (req.parentId == parentId && isValidReq(req)) {
+            if (!matchedIds.contains(id)) {
+                matchedIds.insert(id);
+                addAllChildren(id, matchedIds); // 递归添加子节点的子节点
+            }
+        }
+    }
+}
