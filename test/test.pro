@@ -26,11 +26,13 @@ CONFIG += c++11
 
 SOURCES += \
         ReqifParser.cpp \
+        #TEDEmandModelPreview.cpp \
         main.cpp \
         mainwindow.cpp
 
 HEADERS += \
         ReqifParser.h \
+        #TEDEmandModelPreview.h \
         mainwindow.h
 
 FORMS += \
